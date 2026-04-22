@@ -48,21 +48,26 @@ export default function BookingModal({ isOpen, onClose }: { isOpen: boolean, onC
     setError(null);
 
     try {
-      console.log("Iniciando verificação de disponibilidade no Supabase...");
+      console.log(`Verificando disponibilidade para ${formData.date} às ${formData.time}...`);
+      
       // 1. Verificar se o horário já está ocupado
       const { data: existingAppts, error: checkError } = await supabase
         .from('appointments')
-        .select('id')
+        .select('id, name')
         .eq('date', formData.date)
         .eq('time', formData.time);
       
-      if (checkError) throw checkError;
+      if (checkError) {
+        console.error("Erro na verificação:", checkError);
+        throw new Error("Erro ao verificar agenda. Tente novamente.");
+      }
       
       if (existingAppts && existingAppts.length > 0) {
-        throw new Error("Este horário já está reservado. Por favor, escolha outro.");
+        console.log("Conflito detectado:", existingAppts);
+        throw new Error(`Este horário (${formData.time}) já foi reservado por outro cliente. Por favor, escolha outro horário.`);
       }
 
-      console.log("Verificando cadastro de cliente no Supabase...");
+      console.log("Horário livre. Verificando cliente...");
       // 2. Verificar/Salvar Cliente
       const { data: customerData, error: custError } = await supabase
         .from('customers')
