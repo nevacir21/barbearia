@@ -1,20 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Scissors, User, Zap, Sparkles, Star } from 'lucide-react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { Scissors } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function Services() {
   const [services, setServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, 'services'), orderBy('order', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const fetchServices = async () => {
+      const { data } = await supabase
+        .from('services')
+        .select('*')
+        .order('order', { ascending: true });
+      
+      if (data) setServices(data);
       setLoading(false);
-    });
-    return () => unsubscribe();
+    };
+    fetchServices();
+
+    // Opcional: Escutar mudanças em tempo real
+    const sub = supabase.channel('services-public')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, fetchServices)
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
   }, []);
 
   if (loading) return null;

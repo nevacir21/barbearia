@@ -1,6 +1,34 @@
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { supabase } from '../lib/supabase';
 
 export default function Hero({ onOpenBooking }: { onOpenBooking: () => void }) {
+  const [settings, setSettings] = useState({
+    heroTitle: "Onde a barba para, o estilo começa.",
+    heroSubtitle: "Tradição & Estilo"
+  });
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'site_content')
+        .maybeSingle();
+      
+      if (data && data.value) {
+        setSettings(data.value);
+      }
+    };
+    fetchSettings();
+
+    const sub = supabase.channel('hero-settings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, fetchSettings)
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
+  }, []);
+
   return (
     <section className="relative h-screen flex items-center justify-center overflow-hidden">
       {/* Background Image with Overlay */}
@@ -21,15 +49,15 @@ export default function Hero({ onOpenBooking }: { onOpenBooking: () => void }) {
           transition={{ delay: 0.2 }}
           className="text-gold uppercase tracking-[0.3em] font-medium mb-4"
         >
-          Tradição & Estilo
+          {settings.heroSubtitle}
         </motion.p>
         
         <motion.h1 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="font-display text-5xl md:text-8xl font-bold text-white mb-8 leading-tight"
+          className="font-display text-5xl md:text-8xl font-bold text-white mb-8 leading-tight whitespace-pre-line"
         >
-          Onde a barba para, <br />o <span className="italic text-gold">estilo</span> começa.
+          {settings.heroTitle}
         </motion.h1>
 
         <motion.div 

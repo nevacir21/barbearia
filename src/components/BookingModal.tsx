@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle2, Loader2 } from 'lucide-react';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, getDocs, where, setDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function BookingModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const [step, setStep] = useState(1);
@@ -22,17 +21,16 @@ export default function BookingModal({ isOpen, onClose }: { isOpen: boolean, onC
 
   useEffect(() => {
     if (isOpen) {
-      // Services
-      const qS = query(collection(db, 'services'), orderBy('order', 'asc'));
-      const unsubS = onSnapshot(qS, (snapshot) => {
-        setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
-      // Products
-      const qP = query(collection(db, 'products'), orderBy('order', 'asc'));
-      const unsubP = onSnapshot(qP, (snapshot) => {
-        setProductsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
-      return () => { unsubS(); unsubP(); };
+      const fetchData = async () => {
+        // Fetch Services
+        const { data: sData } = await supabase.from('services').select('*').order('order', { ascending: true });
+        if (sData) setServices(sData);
+
+        // Fetch Products
+        const { data: pData } = await supabase.from('products').select('*').order('order', { ascending: true });
+        if (pData) setProductsList(pData);
+      };
+      fetchData();
     }
   }, [isOpen]);
 
@@ -50,51 +48,62 @@ export default function BookingModal({ isOpen, onClose }: { isOpen: boolean, onC
     setError(null);
 
     try {
-      console.log("Iniciando verificação de disponibilidade...");
+      console.log("Iniciando verificação de disponibilidade no Supabase...");
       // 1. Verificar se o horário já está ocupado
-      const appointmentsRef = collection(db, 'appointments');
-      const q = query(
-        appointmentsRef,
-        where('date', '==', formData.date),
-        where('time', '==', formData.time)
-      );
-      const querySnapshot = await getDocs(q);
+      const { data: existingAppts, error: checkError } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('date', formData.date)
+        .eq('time', formData.time);
       
-      if (!querySnapshot.empty) {
+      if (checkError) throw checkError;
+      
+      if (existingAppts && existingAppts.length > 0) {
         throw new Error("Este horário já está reservado. Por favor, escolha outro.");
       }
 
-      console.log("Verificando cadastro de cliente...");
+      console.log("Verificando cadastro de cliente no Supabase...");
       // 2. Verificar/Salvar Cliente
-      const customersRef = collection(db, 'customers');
-      const customerQuery = query(customersRef, where('phone', '==', formData.phone));
-      const customerSnap = await getDocs(customerQuery);
+      const { data: customerData, error: custError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('phone', formData.phone)
+        .maybeSingle();
 
-      if (customerSnap.empty) {
-        console.log("Cadastrando novo cliente...");
-        await addDoc(customersRef, {
+      if (custError) throw custError;
+
+      if (!customerData) {
+        console.log("Cadastrando novo cliente no Supabase...");
+        const { error: insertCustError } = await supabase.from('customers').insert([{
           name: formData.name,
           phone: formData.phone,
-          totalTreatments: 0,
-          lastVisit: null,
-          createdAt: serverTimestamp()
-        });
+          total_treatments: 0
+        }]);
+        if (insertCustError) throw insertCustError;
       }
 
-      console.log("Criando agendamento...");
+      console.log("Criando agendamento no Supabase...");
       const selectedService = services.find(s => s.name === formData.service);
-      await addDoc(collection(db, 'appointments'), {
-        ...formData,
-        servicePrice: selectedService?.price || "R$ 0",
+      const totalProdsPrice = selectedProducts.reduce((sum, p) => {
+        const price = parseFloat(p.price.replace(/[^\d.,]/g, '').replace(',', '.'));
+        return sum + (isNaN(price) ? 0 : price);
+      }, 0);
+
+      const { error: appointmentError } = await supabase.from('appointments').insert([{
+        name: formData.name,
+        phone: formData.phone,
+        date: formData.date,
+        time: formData.time,
+        service: formData.service,
+        service_price: selectedService?.price || "R$ 0",
         products: selectedProducts.map(p => p.name),
-        totalProductsPrice: selectedProducts.reduce((sum, p) => {
-          const price = parseFloat(p.price.replace(/[^\d.,]/g, '').replace(',', '.'));
-          return sum + (isNaN(price) ? 0 : price);
-        }, 0),
-        createdAt: serverTimestamp(),
+        total_products_price: totalProdsPrice,
         status: 'pending'
-      });
-      setStep(4); // Sucesso (agora é o passo 4)
+      }]);
+
+      if (appointmentError) throw appointmentError;
+
+      setStep(4);
     } catch (err: any) {
       console.error("Erro ao salvar agendamento:", err);
       setError(err.message || "Ocorreu um erro ao salvar seu agendamento. Tente novamente.");

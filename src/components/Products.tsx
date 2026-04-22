@@ -1,20 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ShoppingBag, Star } from 'lucide-react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 
 export default function Products() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, 'products'), orderBy('order', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const fetchProducts = async () => {
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .order('order', { ascending: true });
+      
+      if (data) setProducts(data);
       setLoading(false);
-    });
-    return () => unsubscribe();
+    };
+    fetchProducts();
+
+    const sub = supabase.channel('products-public')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchProducts)
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
   }, []);
 
   if (loading || products.length === 0) return null;

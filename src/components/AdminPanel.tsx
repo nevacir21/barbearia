@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, updateDoc, doc, deleteDoc, addDoc, getDoc, setDoc, serverTimestamp, writeBatch, where, getDocs } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
-import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
-import { LogIn, LogOut, Check, X, Phone, Calendar as CalendarIcon, Clock, Trash2, ShoppingBag, LayoutDashboard, Scissors, Package, BookOpen, User as UserIcon, Lock, DollarSign, Wallet } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { LogIn, LogOut, Check, X, Phone, Calendar as CalendarIcon, Clock, Trash2, ShoppingBag, LayoutDashboard, Scissors, Package, BookOpen, User as UserIcon, Lock, DollarSign, Wallet, Settings as SettingsIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
-  const [user, setUser] = useState<any>(null);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminConfig, setAdminConfig] = useState<any>(null);
   const [adminExists, setAdminExists] = useState<boolean | null>(null);
@@ -16,8 +13,12 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
   const [products, setProducts] = useState<any[]>([]);
   const [cashEntries, setCashEntries] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [siteSettings, setSiteSettings] = useState<any>({
+    heroTitle: "Onde a barba para, o estilo começa.",
+    heroSubtitle: "Tradição & Estilo"
+  });
   
-  const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'products' | 'cash' | 'customers'>('appointments');
+  const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'products' | 'cash' | 'customers' | 'settings'>('appointments');
   const [loading, setLoading] = useState(true);
   const [loadTimeout, setLoadTimeout] = useState(false);
   
@@ -30,43 +31,34 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
   const [loginPass, setLoginPass] = useState("210779");
 
   useEffect(() => {
-    // Safety timer: if loading takes too long, show "Force" option
     const timer = setTimeout(() => {
       setLoadTimeout(true);
     }, 4000);
 
-    // Check if session exists in memory to avoid login on every modal toggle
-    const checkSession = async () => {
+    const checkSession = () => {
       const sessionToken = sessionStorage.getItem('barber_admin_session');
       if (sessionToken === 'active') {
         setIsAdminLoggedIn(true);
-        // Garantir que temos um currentUser para as regras do Firestore
-        if (!auth.currentUser) {
-          try {
-            await signInAnonymously(auth);
-          } catch (e) {
-            console.error("Falha ao reautenticar anonimamente:", e);
-          }
-        }
       }
     };
     checkSession();
 
-    // Check if admin is already configured
+    // Check if admin is configured in Supabase settings table
     const checkAdmin = async () => {
       try {
-        const docRef = doc(db, 'settings', 'admin');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setAdminConfig(docSnap.data());
+        const { data: adminData } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'admin')
+          .maybeSingle();
+
+        if (adminData) {
+          setAdminConfig(adminData.value);
           setAdminExists(true);
         } else {
-          // Auto-configurar com os dados solicitados pelo usuário se for o primeiro acesso
-          const initialAdmin = { 
-            username: "eletricistaarthur@gmail.com", 
-            password: "210779" 
-          };
-          await setDoc(docRef, initialAdmin);
+          // Auto-configure default
+          const initialAdmin = { username: "eletricistaarthur@gmail.com", password: "210779" };
+          await supabase.from('settings').insert([{ key: 'admin', value: initialAdmin }]);
           setAdminConfig(initialAdmin);
           setAdminExists(true);
         }
@@ -80,57 +72,61 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     };
     checkAdmin();
 
-    const unsubAuth = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      if (u && u.email && u.email.toLowerCase() === "eletricistaarthur@gmail.com") {
-        setIsAdminLoggedIn(true);
-      }
-    });
-
-    return () => {
-      clearTimeout(timer);
-      unsubAuth();
-    };
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
     if (isAdminLoggedIn) {
-      // Listen to Appointments
-      const qApts = query(collection(db, 'appointments'), orderBy('createdAt', 'desc'));
-      const unsubApts = onSnapshot(qApts, (snapshot) => {
-        setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
+      const fetchData = async () => {
+        // Initial Fetch
+        const { data: apts } = await supabase.from('appointments').select('*').order('created_at', { ascending: false });
+        if (apts) setAppointments(apts);
 
-      // Listen to Services
-      const qServs = query(collection(db, 'services'), orderBy('order', 'asc'));
-      const unsubServs = onSnapshot(qServs, (snapshot) => {
-        setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
+        const { data: servs } = await supabase.from('services').select('*').order('order', { ascending: true });
+        if (servs) setServices(servs);
 
-      // Listen to Products
-      const qProds = query(collection(db, 'products'), orderBy('order', 'asc'));
-      const unsubProds = onSnapshot(qProds, (snapshot) => {
-        setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
+        const { data: prods } = await supabase.from('products').select('*').order('order', { ascending: true });
+        if (prods) setProducts(prods);
 
-      // Listen to Cash Book
-      const qCash = query(collection(db, 'cash_book'), orderBy('date', 'desc'));
-      const unsubCash = onSnapshot(qCash, (snapshot) => {
-        setCashEntries(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
+        const { data: cash } = await supabase.from('cash_book').select('*').order('date', { ascending: false });
+        if (cash) setCashEntries(cash);
 
-      // Listen to Customers
-      const qCust = query(collection(db, 'customers'), orderBy('name', 'asc'));
-      const unsubCust = onSnapshot(qCust, (snapshot) => {
-        setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      });
+        const { data: cust } = await supabase.from('customers').select('*').order('name', { ascending: true });
+        if (cust) setCustomers(cust);
+
+        const { data: sSet } = await supabase.from('settings').select('*').eq('key', 'site_content').maybeSingle();
+        if (sSet) setSiteSettings(sSet.value);
+      };
+
+      fetchData();
+
+      // Realtime Subscriptions
+      const appointmentsSub = supabase.channel('appointments-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, fetchData)
+        .subscribe();
+      const servicesSub = supabase.channel('services-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, fetchData)
+        .subscribe();
+      const productsSub = supabase.channel('products-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
+        .subscribe();
+      const cashSub = supabase.channel('cash-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_book' }, fetchData)
+        .subscribe();
+      const customersSub = supabase.channel('customers-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, fetchData)
+        .subscribe();
+      const settingsSub = supabase.channel('settings-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, fetchData)
+        .subscribe();
 
       return () => {
-        unsubApts();
-        unsubServs();
-        unsubProds();
-        unsubCash();
-        unsubCust();
+        supabase.removeChannel(appointmentsSub);
+        supabase.removeChannel(servicesSub);
+        supabase.removeChannel(productsSub);
+        supabase.removeChannel(cashSub);
+        supabase.removeChannel(customersSub);
+        supabase.removeChannel(settingsSub);
       };
     }
   }, [isAdminLoggedIn]);
@@ -142,32 +138,15 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     const password = loginPass.trim();
 
     try {
-      // Atalho de segurança prioritário para o Arthur
-      if (username === "eletricistaarthur@gmail.com" && password === "210779") {
-        if (!auth.currentUser) {
-          try { 
-            await signInAnonymously(auth); 
-          } catch(e) { 
-            console.error("Auth falhou:", e); 
-          }
-        }
-        sessionStorage.setItem('barber_admin_session', 'active');
-        setIsAdminLoggedIn(true);
-        setAlertMsg({ type: 'success', text: "Bem-vindo de volta, Arthur!" });
-        setIsProcessing(null); // Clear processing state
-        return;
-      }
-
       if (!adminConfig) {
-        const docSnap = await getDoc(doc(db, 'settings', 'admin'));
-        if (docSnap.exists()) setAdminConfig(docSnap.data());
+        const { data: adminData } = await supabase.from('settings').select('value').eq('key', 'admin').maybeSingle();
+        if (adminData) setAdminConfig(adminData.value);
       }
 
       const targetUser = adminConfig?.username?.trim().toLowerCase();
       const targetPass = adminConfig?.password?.trim();
 
       if (targetUser === username && targetPass === password) {
-        if (!auth.currentUser) await signInAnonymously(auth);
         sessionStorage.setItem('barber_admin_session', 'active');
         setIsAdminLoggedIn(true);
         setAlertMsg({ type: 'success', text: "Acesso liberado!" });
@@ -192,11 +171,8 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     try {
       if (password.length < 4) throw new Error("A senha deve ter pelo menos 4 caracteres.");
       
-      await setDoc(doc(db, 'settings', 'admin'), { username, password });
-      
-      if (!auth.currentUser) {
-        await signInAnonymously(auth);
-      }
+      const { error } = await supabase.from('settings').upsert([{ key: 'admin', value: { username, password } }]);
+      if (error) throw error;
       
       setAdminConfig({ username, password });
       setAdminExists(true);
@@ -210,16 +186,9 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     }
   };
 
-  const googleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  };
-
   const logout = () => {
-    signOut(auth).then(() => {
-      sessionStorage.removeItem('barber_admin_session');
-      setIsAdminLoggedIn(false);
-    });
+    sessionStorage.removeItem('barber_admin_session');
+    setIsAdminLoggedIn(false);
   };
 
   const extractPrice = (priceStr: any) => {
@@ -237,9 +206,9 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     }
 
     const serviceObj = services.find(s => s.name === apt.service);
-    const servicePriceStr = serviceObj ? serviceObj.price : (apt.servicePrice || "R$ 0");
+    const servicePriceStr = serviceObj ? serviceObj.price : (apt.service_price || "R$ 0");
     let amount = extractPrice(servicePriceStr);
-    if (apt.totalProductsPrice) amount += Number(apt.totalProductsPrice);
+    if (apt.total_products_price) amount += Number(apt.total_products_price);
 
     setConfirmPopup({ id: apt.id, name: apt.name, service: apt.service, amount, apt });
   };
@@ -251,40 +220,34 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     setIsProcessing(apt.id);
     setConfirmPopup(null);
     try {
-      if (!auth.currentUser) {
-        console.log("Tentando reauth de emergência...");
-        await signInAnonymously(auth);
-      }
-      
-      if (!auth.currentUser) throw new Error("Não foi possível validar sua sessão. Tente recarregar a página.");
-
-      const batch = writeBatch(db);
-      const cashRef = doc(collection(db, 'cash_book'));
-      batch.set(cashRef, {
-        clientName: apt.name,
+      // 1. Lançar no caixa
+      const { error: cashError } = await supabase.from('cash_book').insert([{
+        client_name: apt.name,
         service: apt.service,
         products: apt.products || [],
         amount: amount,
-        date: serverTimestamp(),
         details: `Concluído em ${new Date().toLocaleDateString()} (Agendado para ${apt.date})`
-      });
+      }]);
+      if (cashError) throw cashError;
 
-      // Atualizar estatísticas do Cliente
-      const customerQuery = query(collection(db, 'customers'), where('phone', '==', apt.phone));
-      const customerSnap = await getDocs(customerQuery);
-      if (!customerSnap.empty) {
-        const customerDoc = customerSnap.docs[0];
-        batch.update(customerDoc.ref, {
-          totalTreatments: (customerDoc.data().totalTreatments || 0) + 1,
-          lastVisit: serverTimestamp(),
-          lastService: apt.service
-        });
+      // 2. Atualizar estatísticas do Cliente
+      const { data: customerData } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('phone', apt.phone)
+        .maybeSingle();
+
+      if (customerData) {
+        await supabase.from('customers').update({
+          total_treatments: (customerData.total_treatments || 0) + 1,
+          last_visit: new Date().toISOString(),
+          last_service: apt.service
+        }).eq('id', customerData.id);
       }
 
-      const aptRef = doc(db, 'appointments', apt.id);
-      batch.delete(aptRef);
+      // 3. Deletar agendamento
+      await supabase.from('appointments').delete().eq('id', apt.id);
 
-      await batch.commit();
       setAlertMsg({ type: 'success', text: "Lançado no caixa com sucesso!" });
     } catch (err: any) {
       setAlertMsg({ type: 'error', text: `Erro: ${err.message}` });
@@ -295,12 +258,13 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
 
   const deleteAppointment = async (id: string) => {
     if (confirm("Deseja realmente excluir este agendamento sem lançar no caixa?")) {
-      await deleteDoc(doc(db, 'appointments', id));
+      await supabase.from('appointments').delete().eq('id', id);
     }
   };
 
   const saveService = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsProcessing("save_service");
     const data = new FormData(e.target as HTMLFormElement);
     const serviceData = {
       name: data.get('name') as string,
@@ -309,22 +273,40 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       order: Number(data.get('order')) || 0,
     };
 
-    if (editingService?.id) {
-      await updateDoc(doc(db, 'services', editingService.id), serviceData);
-    } else {
-      await addDoc(collection(db, 'services'), serviceData);
+    try {
+      if (editingService?.id) {
+        const { error } = await supabase.from('services').update(serviceData).eq('id', editingService.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('services').insert([serviceData]);
+        if (error) throw error;
+      }
+      setAlertMsg({ type: 'success', text: "Serviço salvo com sucesso!" });
+      setEditingService(null);
+      (e.target as HTMLFormElement).reset();
+    } catch (err: any) {
+      console.error("Erro ao salvar serviço:", err);
+      setAlertMsg({ type: 'error', text: `Erro: ${err.message}` });
+    } finally {
+      setIsProcessing(null);
     }
-    setEditingService(null);
   };
 
   const deleteService = async (id: string) => {
     if (confirm("Excluir este serviço? Isso não afetará agendamentos já feitos.")) {
-      await deleteDoc(doc(db, 'services', id));
+      try {
+        const { error } = await supabase.from('services').delete().eq('id', id);
+        if (error) throw error;
+        setAlertMsg({ type: 'success', text: "Serviço excluído!" });
+      } catch (err: any) {
+        setAlertMsg({ type: 'error', text: `Erro ao excluir: ${err.message}` });
+      }
     }
   };
 
   const saveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsProcessing("save_product");
     const data = new FormData(e.target as HTMLFormElement);
     const productData = {
       name: data.get('name') as string,
@@ -334,17 +316,54 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       order: Number(data.get('order')) || 0,
     };
 
-    if (editingProduct?.id) {
-      await updateDoc(doc(db, 'products', editingProduct.id), productData);
-    } else {
-      await addDoc(collection(db, 'products'), productData);
+    try {
+      if (editingProduct?.id) {
+        const { error } = await supabase.from('products').update(productData).eq('id', editingProduct.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('products').insert([productData]);
+        if (error) throw error;
+      }
+      setAlertMsg({ type: 'success', text: "Produto salvo com sucesso!" });
+      setEditingProduct(null);
+      (e.target as HTMLFormElement).reset();
+    } catch (err: any) {
+      console.error("Erro ao salvar produto:", err);
+      setAlertMsg({ type: 'error', text: `Erro: ${err.message}` });
+    } finally {
+      setIsProcessing(null);
     }
-    setEditingProduct(null);
   };
 
   const deleteProduct = async (id: string) => {
     if (confirm("Excluir esta mercadoria?")) {
-      await deleteDoc(doc(db, 'products', id));
+      try {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+        setAlertMsg({ type: 'success', text: "Produto excluído!" });
+      } catch (err: any) {
+        setAlertMsg({ type: 'error', text: `Erro ao excluir: ${err.message}` });
+      }
+    }
+  };
+
+  const saveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsProcessing("settings");
+    const data = new FormData(e.target as HTMLFormElement);
+    const newSettings = {
+      heroTitle: data.get('heroTitle') as string,
+      heroSubtitle: data.get('heroSubtitle') as string
+    };
+
+    try {
+      const { error } = await supabase.from('settings').upsert([{ key: 'site_content', value: newSettings }]);
+      if (error) throw error;
+      setAlertMsg({ type: 'success', text: "Configurações salvas!" });
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: `Erro: ${err.message}` });
+    } finally {
+      setIsProcessing(null);
     }
   };
 
@@ -585,6 +604,14 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
             <UserIcon className="w-5 h-5" />
             <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Clientes</span>
           </button>
+
+          <button 
+            onClick={() => setActiveTab('settings')}
+            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'settings' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+          >
+            <SettingsIcon className="w-5 h-5" />
+            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal text-nowrap">Configurações</span>
+          </button>
         </nav>
 
         <div className="hidden md:block p-6 border-t border-white/5 space-y-4">
@@ -698,9 +725,9 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                     <div className="flex justify-between items-start mb-4 pb-4 border-b border-white/5">
                       <div>
                         <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1 font-bold">
-                          {entry.date?.seconds ? new Date(entry.date.seconds * 1000).toLocaleDateString() : 'Recente'}
+                          {entry.date ? new Date(entry.date).toLocaleDateString() : 'Recente'}
                         </div>
-                        <div className="text-xl font-bold text-white uppercase tracking-tight">{entry.clientName}</div>
+                        <div className="text-xl font-bold text-white uppercase tracking-tight">{entry.client_name}</div>
                       </div>
                       <div className="text-right">
                         <div className="text-[10px] uppercase tracking-widest text-gold mb-0.5">Valor Total</div>
@@ -751,8 +778,17 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                       <textarea name="description" defaultValue={editingService?.description || ''} required placeholder="Breve descrição" className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none h-32" />
                       <input name="order" type="number" defaultValue={editingService?.order || 0} placeholder="Ordem" className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" />
                       <div className="flex gap-4 pt-4">
-                        <button type="submit" className="flex-grow bg-gold text-charcoal font-bold py-4 hover:bg-white transition-all uppercase tracking-widest text-xs">
-                          {editingService ? 'Atualizar' : 'Salvar'}
+                        <button 
+                          type="submit" 
+                          disabled={isProcessing === "save_service"}
+                          className="flex-grow bg-gold text-charcoal font-bold py-4 hover:bg-white transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+                        >
+                          {isProcessing === "save_service" ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-t-transparent border-charcoal animate-spin rounded-full"></div>
+                              Salvando...
+                            </>
+                          ) : (editingService ? 'Atualizar' : 'Salvar')}
                         </button>
                         {editingService && <button type="button" onClick={() => setEditingService(null)} className="px-6 border border-white/10 text-white hover:bg-white/5 uppercase text-xs">Cancelar</button>}
                       </div>
@@ -791,8 +827,17 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                      <input name="image" defaultValue={editingProduct?.image || ''} placeholder="Link da Imagem" className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" />
                      <input name="order" type="number" defaultValue={editingProduct?.order || 0} placeholder="Ordem" className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" />
                      <div className="flex gap-4 pt-4">
-                       <button type="submit" className="flex-grow bg-gold text-charcoal font-bold py-4 hover:bg-white transition-all uppercase tracking-widest text-xs">
-                         {editingProduct ? 'Atualizar' : 'Salvar'}
+                       <button 
+                         type="submit" 
+                         disabled={isProcessing === "save_product"}
+                         className="flex-grow bg-gold text-charcoal font-bold py-4 hover:bg-white transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+                       >
+                         {isProcessing === "save_product" ? (
+                           <>
+                             <div className="w-3 h-3 border-2 border-t-transparent border-charcoal animate-spin rounded-full"></div>
+                             Salvando...
+                           </>
+                         ) : (editingProduct ? 'Atualizar' : 'Salvar')}
                        </button>
                        {editingProduct && <button type="button" onClick={() => setEditingProduct(null)} className="px-6 border border-white/10 text-white hover:bg-white/5 uppercase text-xs">Cancelar</button>}
                      </div>
@@ -841,18 +886,18 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                     <div className="space-y-4 pt-6 border-t border-white/5">
                       <div className="flex justify-between items-center bg-charcoal/50 p-4 rounded-xl border border-white/5">
                         <span className="text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold">Fidelidade</span>
-                        <span className="text-sm font-black text-gold">{customer.totalTreatments || 0} cortes</span>
+                        <span className="text-sm font-black text-gold">{customer.total_treatments || 0} cortes</span>
                       </div>
                       <div className="flex justify-between items-center bg-charcoal/50 p-4 rounded-xl border border-white/5">
                         <span className="text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold">Última Visita</span>
                         <span className="text-xs text-gray-300 font-bold">
-                          {customer.lastVisit?.seconds ? new Date(customer.lastVisit.seconds * 1000).toLocaleDateString() : 'Nenhum registro'}
+                          {customer.last_visit ? new Date(customer.last_visit).toLocaleDateString() : 'Nenhum registro'}
                         </span>
                       </div>
-                      {customer.lastService && (
+                      {customer.last_service && (
                          <div className="pt-2">
                            <p className="text-[9px] uppercase tracking-widest text-gray-600 font-bold mb-1">Último Serviço</p>
-                           <p className="text-xs text-gray-400 italic">"{customer.lastService}"</p>
+                           <p className="text-xs text-gray-400 italic">"{customer.last_service}"</p>
                          </div>
                       )}
                     </div>
@@ -864,6 +909,61 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                     <p className="text-gray-500 font-display text-2xl uppercase tracking-widest opacity-50">Sua lista de clientes está vazia.</p>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'settings' && (
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <div className="mb-12">
+                <h1 className="font-display text-5xl font-bold text-white mb-2 italic">Configurações</h1>
+                <p className="text-gray-500 text-sm">Personalize os textos do seu site</p>
+              </div>
+
+              <div className="max-w-2xl">
+                <form onSubmit={saveSettings} className="bg-clay p-8 border border-white/10 space-y-6">
+                  <div className="space-y-4">
+                    <h3 className="text-xl font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                       <LayoutDashboard className="w-5 h-5" /> Banner Principal (Hero)
+                    </h3>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-gray-500">Subtítulo (Dourado pequeno)</label>
+                      <input 
+                        name="heroSubtitle" 
+                        defaultValue={siteSettings.heroSubtitle} 
+                        className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
+                        placeholder="Ex: Tradição & Estilo"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-gray-500">Título Principal (Grande)</label>
+                      <textarea 
+                        name="heroTitle" 
+                        defaultValue={siteSettings.heroTitle} 
+                        className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none h-32" 
+                        placeholder="Ex: Onde a barba para, o estilo começa."
+                      />
+                      <p className="text-[9px] text-gray-600 italic">Dica: O texto será exibido em destaque no topo do site.</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5">
+                    <button 
+                      type="submit" 
+                      disabled={isProcessing === "settings"}
+                      className="w-full bg-gold text-charcoal font-black py-5 hover:bg-white transition-all uppercase tracking-[0.2em] text-xs gold-shadow flex items-center justify-center gap-2"
+                    >
+                      {isProcessing === "settings" ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-t-transparent border-charcoal animate-spin rounded-full"></div>
+                          Salvando...
+                        </>
+                      ) : 'Salvar Alterações'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </motion.div>
           )}
@@ -909,6 +1009,13 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
             >
               <UserIcon className="w-5 h-5" />
               <span className="text-[10px] font-black uppercase tracking-tight">Clientes</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('settings')}
+              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'settings' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
+            >
+              <SettingsIcon className="w-5 h-5" />
+              <span className="text-[10px] font-black uppercase tracking-tight">Ajustes</span>
             </button>
             <button onClick={logout} className="flex-1 flex flex-col items-center justify-center gap-1.5 text-gray-600 hover:text-red-500 border-l border-white/5">
               <LogOut className="w-5 h-5" />
