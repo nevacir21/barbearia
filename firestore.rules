@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Agendamentos: Qualquer um pode ver disponibilidade e criar
+    match /appointments/{id} {
+      allow read, create: if true;
+      allow update, delete: if request.auth != null;
+    }
+
+    // Clientes: Qualquer um pode ser verificado/criado no agendamento
+    match /customers/{id} {
+      allow read, create: if true;
+      allow update, delete: if request.auth != null;
+    }
+
+    // Serviços e Produtos: Públicos para leitura
+    match /services/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /products/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Livro Caixa: Apenas Admin (Logado)
+    match /cash_book/{id} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Configurações: Público para facilitar o setup e login
+    match /settings/{id} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "Appointment": {
+      "title": "Appointment",
+      "description": "A booking for a barber service",
+      "type": "object",
+      "properties": {
+        "service": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] }
+      },
+      "required": ["service", "date", "time", "name", "phone", "createdAt"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "A barbershop service (haircut, beard, etc.)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "price", "description"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Merchandise for sale (pomade, shampoo, etc.)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "string" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "price", "description"]
+    },
+    "CashEntry": {
+      "title": "CashEntry",
+      "description": "An entry in the cash book (revenue)",
+      "type": "object",
+      "properties": {
+        "clientName": { "type": "string" },
+        "service": { "type": "string" },
+        "products": { "type": "array", "items": { "type": "string" } },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "details": { "type": "string" }
+      },
+      "required": ["clientName", "service", "amount", "date"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer registration details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "totalTreatments": { "type": "number" },
+        "lastVisit": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone", "createdAt"]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Credentials for admin panel access",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "password": { "type": "string" }
+      },
+      "required": ["username", "password"]
+    }
+  },
+  "firestore": {
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Collection of all service appointments"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Available barbershop services"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Merchandise available for sale"
+    },
+    "/cash_book/{entryId}": {
+      "schema": "CashEntry",
+      "description": "Financial records of completed services"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Registry of all customers"
+    },
+    "/settings/admin": {
+      "schema": "AdminConfig",
+      "description": "Admin credentials"
+    }
+  }
+}
