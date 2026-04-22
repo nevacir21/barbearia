@@ -62,12 +62,6 @@ export default function Footer({ onOpenAdmin }: { onOpenAdmin: () => void }) {
 
       <div className="max-w-7xl mx-auto border-t border-white/5 pt-10 text-center text-gray-500 text-sm">
         <p>&copy; 2026 Barber Pro & Style. Todos os direitos reservados.</p>
-        <button 
-          onClick={onOpenAdmin}
-          className="mt-8 px-6 py-3 border border-gold/30 text-gold hover:bg-gold hover:text-charcoal transition-all text-xs uppercase tracking-[0.2em] font-black flex items-center gap-3 mx-auto rounded-full gold-shadow-sm"
-        >
-          <Lock className="w-3 h-3" /> Acessar Painel Admin
-        </button>
       </div>
     </footer>
   );

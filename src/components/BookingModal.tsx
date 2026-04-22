@@ -300,7 +300,10 @@ export default function BookingModal({ isOpen, onClose }: { isOpen: boolean, onC
                   Tudo certo, <strong>{formData.name}</strong>! Recebemos seu pedido para <strong>{formData.service}</strong> em <strong>{formData.date} às {formData.time}</strong>.
                 </p>
                 <button 
-                  onClick={onClose}
+                  onClick={() => {
+                    onClose();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
                   className="bg-gold px-10 py-4 font-bold text-charcoal hover:bg-white transition-all"
                 >
                   Fechar
