@@ -65,7 +65,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
   }, []);
 
   useEffect(() => {
-    if (isAdminLoggedIn) {
+    if (isAdminLoggedIn && isOpen) {
       const fetchData = async () => {
         // Initial Fetch
         const { data: apts } = await supabase.from('appointments').select('*').order('created_at', { ascending: false });
@@ -118,7 +118,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
         supabase.removeChannel(settingsSub);
       };
     }
-  }, [isAdminLoggedIn]);
+  }, [isAdminLoggedIn, isOpen]);
 
   const handleCustomLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
