@@ -286,7 +286,11 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       (e.target as HTMLFormElement).reset();
     } catch (err: any) {
       console.error("Erro ao salvar serviço:", err);
-      setAlertMsg({ type: 'error', text: `Erro: ${err.message}` });
+      let errorMsg = err.message;
+      if (errorMsg === "Failed to fetch") {
+        errorMsg = "Erro de Conexão: Verifique se as Variáveis de Ambiente (URL/KEY) foram configuradas no painel da Vercel.";
+      }
+      setAlertMsg({ type: 'error', text: errorMsg });
     } finally {
       setIsProcessing(null);
     }
@@ -329,7 +333,11 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       (e.target as HTMLFormElement).reset();
     } catch (err: any) {
       console.error("Erro ao salvar produto:", err);
-      setAlertMsg({ type: 'error', text: `Erro: ${err.message}` });
+      let errorMsg = err.message;
+      if (errorMsg === "Failed to fetch" || errorMsg.includes("Failed to fetch")) {
+        errorMsg = "Erro de Conexão: Verifique se as Variáveis de Ambiente (URL/KEY) foram configuradas no painel da Vercel.";
+      }
+      setAlertMsg({ type: 'error', text: errorMsg });
     } finally {
       setIsProcessing(null);
     }
@@ -361,7 +369,12 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       if (error) throw error;
       setAlertMsg({ type: 'success', text: "Configurações salvas!" });
     } catch (err: any) {
-      setAlertMsg({ type: 'error', text: `Erro: ${err.message}` });
+      console.error("Erro ao salvar configurações:", err);
+      let errorMsg = err.message;
+      if (errorMsg === "Failed to fetch" || errorMsg.includes("Failed to fetch")) {
+        errorMsg = "Erro de Conexão: Verifique se as Variáveis de Ambiente (URL/KEY) foram configuradas no painel da Vercel.";
+      }
+      setAlertMsg({ type: 'error', text: errorMsg });
     } finally {
       setIsProcessing(null);
     }
@@ -491,6 +504,14 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
 
   return (
     <div className="fixed inset-0 z-[400] bg-charcoal flex flex-col md:flex-row shadow-2xl overflow-hidden text-white">
+      {/* Aviso de Configuração Faltante na Vercel */}
+      {!import.meta.env.VITE_SUPABASE_URL && (
+        <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[10px] font-bold uppercase tracking-[0.2em] py-3 px-4 z-[1000] text-center shadow-2xl flex items-center justify-center gap-3">
+          <Package className="w-3 h-3" />
+          Atenção: Supabase não configurado. Adicione VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no painel da Vercel.
+        </div>
+      )}
+      
       {/* POPUPS DE CONFIRMAÇÃO E ALERTA */}
       <AnimatePresence>
         {confirmPopup && (
