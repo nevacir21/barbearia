@@ -35,44 +35,33 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       setLoadTimeout(true);
     }, 4000);
 
-    const checkSession = () => {
-      const sessionToken = sessionStorage.getItem('barber_admin_session');
-      if (sessionToken === 'active') {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
         setIsAdminLoggedIn(true);
+        setAdminConfig({ username: session.user.email });
       }
     };
     checkSession();
 
-    // Check if admin is configured in Supabase settings table
-    const checkAdmin = async () => {
-      try {
-        const { data: adminData } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'admin')
-          .maybeSingle();
-
-        if (adminData) {
-          setAdminConfig(adminData.value);
-          setAdminExists(true);
-        } else {
-          // Auto-configure default
-          const initialAdmin = { username: "eletricistaarthur@gmail.com", password: "210779" };
-          await supabase.from('settings').insert([{ key: 'admin', value: initialAdmin }]);
-          setAdminConfig(initialAdmin);
-          setAdminExists(true);
-        }
-      } catch (err) {
-        console.error("Erro ao verificar admin:", err);
-        setAdminExists(false);
-      } finally {
-        setLoading(false);
-        clearTimeout(timer);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setIsAdminLoggedIn(true);
+        setAdminConfig({ username: session.user.email });
+      } else {
+        setIsAdminLoggedIn(false);
+        setAdminConfig(null);
       }
-    };
-    checkAdmin();
+    });
 
-    return () => clearTimeout(timer);
+    setAdminExists(true);
+    setLoading(false);
+    clearTimeout(timer);
+
+    return () => {
+      clearTimeout(timer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -134,28 +123,23 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
   const handleCustomLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsProcessing("login");
-    const username = loginUser.trim().toLowerCase();
+    const email = loginUser.trim().toLowerCase();
     const password = loginPass.trim();
 
     try {
-      if (!adminConfig) {
-        const { data: adminData } = await supabase.from('settings').select('value').eq('key', 'admin').maybeSingle();
-        if (adminData) setAdminConfig(adminData.value);
-      }
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      const targetUser = adminConfig?.username?.trim().toLowerCase();
-      const targetPass = adminConfig?.password?.trim();
-
-      if (targetUser === username && targetPass === password) {
-        sessionStorage.setItem('barber_admin_session', 'active');
-        setIsAdminLoggedIn(true);
-        setAlertMsg({ type: 'success', text: "Acesso liberado!" });
-      } else {
-        throw new Error("Usuário ou senha incorretos.");
-      }
+      if (loginError) throw loginError;
+      
+      setAlertMsg({ type: 'success', text: "Acesso liberado!" });
     } catch (err: any) {
       console.error("Falha no login:", err);
-      setAlertMsg({ type: 'error', text: err.message });
+      let errorMsg = err.message;
+      if (errorMsg === "Invalid login credentials") errorMsg = "E-mail ou senha incorretos.";
+      setAlertMsg({ type: 'error', text: errorMsg });
     } finally {
       setIsProcessing(null);
     }
@@ -186,9 +170,8 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     }
   };
 
-  const logout = () => {
-    sessionStorage.removeItem('barber_admin_session');
-    setIsAdminLoggedIn(false);
+  const logout = async () => {
+    await supabase.auth.signOut();
   };
 
   const extractPrice = (priceStr: any) => {
