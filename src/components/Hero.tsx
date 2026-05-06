@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { supabase } from '../lib/supabase';
 
-export default function Hero({ onOpenBooking }: { onOpenBooking: () => void }) {
+export default function Hero({ onOpenBooking, isBookingEnabled = true }: { onOpenBooking: () => void, isBookingEnabled?: boolean }) {
   const [settings, setSettings] = useState({
     heroTitle: "Onde a barba para, o estilo começa.",
-    heroSubtitle: "Tradição & Estilo"
+    heroSubtitle: "Tradição & Estilo",
+    isBookingEnabled: true
   });
 
   useEffect(() => {
@@ -17,7 +18,10 @@ export default function Hero({ onOpenBooking }: { onOpenBooking: () => void }) {
         .maybeSingle();
       
       if (data && data.value) {
-        setSettings(data.value);
+        setSettings({
+          ...settings,
+          ...data.value
+        });
       }
     };
     fetchSettings();
@@ -66,12 +70,14 @@ export default function Hero({ onOpenBooking }: { onOpenBooking: () => void }) {
           transition={{ delay: 0.4 }}
           className="flex flex-col md:flex-row gap-4 justify-center items-center"
         >
-          <button 
-            onClick={onOpenBooking}
-            className="bg-gold text-charcoal px-10 py-4 text-lg font-bold hover:bg-white transition-all min-w-[200px] gold-shadow"
-          >
-            Agende Seu Horário
-          </button>
+          {isBookingEnabled && (
+            <button 
+              onClick={onOpenBooking}
+              className="bg-gold text-charcoal px-10 py-4 text-lg font-bold hover:bg-white transition-all min-w-[200px] gold-shadow"
+            >
+              Agende Seu Horário
+            </button>
+          )}
           <a 
             href="#services"
             className="border border-white/20 px-10 py-4 text-lg font-bold hover:bg-white/10 transition-all min-w-[200px] text-white flex items-center justify-center"

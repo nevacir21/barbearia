@@ -23,7 +23,8 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     hoursWeekdays: "09:00 - 20:00",
     hoursSaturday: "08:00 - 18:00",
     hoursSunday: "Fechado",
-    secondaryPassword: ""
+    secondaryPassword: "",
+    isBookingEnabled: true
   });
   
   const [isSecondaryVerified, setIsSecondaryVerified] = useState(false);
@@ -524,7 +525,8 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       hoursWeekdays: data.get('hoursWeekdays') as string,
       hoursSaturday: data.get('hoursSaturday') as string,
       hoursSunday: data.get('hoursSunday') as string,
-      secondaryPassword: data.get('secondaryPassword') as string
+      secondaryPassword: data.get('secondaryPassword') as string,
+      isBookingEnabled: data.get('isBookingEnabled') === 'true'
     };
 
     try {
@@ -1282,6 +1284,45 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
         <AnimatePresence mode="wait">
           {activeTab === 'appointments' && (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
+              {/* Agenda Toggle Control */}
+              <div className="bg-clay border border-white/10 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-6 gold-shadow mb-8">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${siteSettings.isBookingEnabled ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                    <CalendarIcon className="w-6 h-6" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="font-display text-xl font-bold text-white uppercase italic tracking-widest">
+                      Status do Agendamento
+                    </h3>
+                    <p className="text-gray-500 text-[10px] uppercase tracking-[0.2em] font-bold">
+                      {siteSettings.isBookingEnabled ? 'Sistema Ativado - Recebendo reservas' : 'Sistema Desativado - Agenda bloqueada'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className={`text-[10px] font-bold uppercase tracking-widest ${!siteSettings.isBookingEnabled ? 'text-red-500' : 'text-gray-500'}`}>Desativado</span>
+                  <button 
+                    onClick={async () => {
+                      const newStatus = !siteSettings.isBookingEnabled;
+                      const newSettings = { ...siteSettings, isBookingEnabled: newStatus };
+                      try {
+                        const { error } = await supabase.from('settings').upsert([{ key: 'site_content', value: newSettings }]);
+                        if (error) throw error;
+                        setSiteSettings(newSettings);
+                        setAlertMsg({ type: 'success', text: newStatus ? "Agendamento Ativado!" : "Agendamento Desativado!" });
+                      } catch (err) {
+                        setAlertMsg({ type: 'error', text: "Erro ao atualizar status" });
+                      }
+                    }}
+                    className={`relative w-16 h-8 rounded-full transition-all duration-300 ${siteSettings.isBookingEnabled ? 'bg-gold' : 'bg-white/10'}`}
+                  >
+                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-lg transition-all duration-300 ${siteSettings.isBookingEnabled ? 'left-9' : 'left-1'}`} />
+                  </button>
+                  <span className={`text-[10px] font-bold uppercase tracking-widest ${siteSettings.isBookingEnabled ? 'text-gold' : 'text-gray-500'}`}>Ativado</span>
+                </div>
+              </div>
+
               <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 md:mb-12 gap-4">
                 <div>
                   <h1 className="font-display text-3xl md:text-5xl font-bold text-white mb-1 md:mb-2">Agenda</h1>

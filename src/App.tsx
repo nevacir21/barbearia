@@ -12,6 +12,7 @@ export default function App() {
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [satisfiedCount, setSatisfiedCount] = useState(500);
+  const [isBookingEnabled, setIsBookingEnabled] = useState(true);
 
   const yearsOfExperience = new Date().getFullYear() - 2025;
 
@@ -32,11 +33,20 @@ export default function App() {
 
     fetchSatisfiedCount();
 
+    const fetchBookingStatus = async () => {
+      const { data } = await supabase.from('settings').select('value').eq('key', 'site_content').maybeSingle();
+      if (data?.value) {
+        setIsBookingEnabled(data.value.isBookingEnabled !== false);
+      }
+    };
+    fetchBookingStatus();
+
     // Opcional: Escutar mudanças no table para atualizar em tempo real
     const channel = supabase
-      .channel('cash_book_changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cash_book' }, () => {
+      .channel('site_settings_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
         fetchSatisfiedCount();
+        fetchBookingStatus();
       })
       .subscribe();
 
@@ -50,9 +60,13 @@ export default function App() {
       <Navbar 
         onOpenBooking={() => setIsBookingOpen(true)} 
         onOpenAdmin={() => setIsAdminOpen(true)}
+        isBookingEnabled={isBookingEnabled}
       />
       <main>
-        <Hero onOpenBooking={() => setIsBookingOpen(true)} />
+        <Hero 
+          onOpenBooking={() => setIsBookingOpen(true)} 
+          isBookingEnabled={isBookingEnabled}
+        />
         <Services />
         <Products />
         <section id="about" className="py-24 max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
