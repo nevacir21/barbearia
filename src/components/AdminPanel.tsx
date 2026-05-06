@@ -102,6 +102,13 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     if (isOpen) {
       setIsSecondaryVerified(false);
       setSecondaryInput("");
+      setLoginUser("");
+      setLoginPass("");
+    } else {
+      // Também limpar ao fechar por segurança
+      setSecondaryInput("");
+      setLoginUser("");
+      setLoginPass("");
     }
   }, [isOpen]);
 
@@ -191,6 +198,10 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
 
   const logout = async () => {
     await supabase.auth.signOut();
+    setIsSecondaryVerified(false);
+    setSecondaryInput("");
+    setLoginUser("");
+    setLoginPass("");
   };
 
   const extractPrice = (priceStr: any) => {
@@ -1891,6 +1902,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                          name="secondaryPassword" 
                          type="password"
                          defaultValue={siteSettings.secondaryPassword} 
+                         autoComplete="new-password"
                          className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
                          placeholder="Defina uma senha numérica ou texto"
                        />
