@@ -566,7 +566,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
           </div>
 
           <div className="space-y-6">
-            <form onSubmit={handleCustomLogin} className="space-y-4">
+            <form onSubmit={handleCustomLogin} className="space-y-4" autoComplete="off">
               <div className="space-y-3">
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase tracking-widest text-gray-500 block ml-1">E-mail de Acesso</label>
@@ -577,6 +577,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                     onChange={(e) => setLoginUser(e.target.value)}
                     placeholder="email@exemplo.com" 
                     required 
+                    autoComplete="off"
                     className="w-full bg-charcoal border border-white/10 px-4 py-4 text-white outline-none focus:border-gold transition-all text-sm" 
                   />
                 </div>
@@ -589,6 +590,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                     onChange={(e) => setLoginPass(e.target.value)}
                     placeholder="******" 
                     required 
+                    autoComplete="new-password"
                     className="w-full bg-charcoal border border-white/10 px-4 py-4 text-white outline-none focus:border-gold transition-all text-sm" 
                   />
                 </div>
