@@ -1,13 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const rawUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://zyuavhkjetaaeooiaaie.supabase.co').trim();
 // Limpeza agressiva: remove barras finais e sufixos de API comuns
 const supabaseUrl = rawUrl
   .replace(/\/$/, "")
   .replace(/\/rest\/v1$/, "")
   .replace(/\/auth\/v1$/, "");
 
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_RkXB2mbYtO9eHOZ8kgFe_Q_emtzTIqT').trim();
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn("Supabase credentials missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in environment variables.");

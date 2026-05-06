@@ -9,6 +9,15 @@ export default function BookingModal({ isOpen, onClose }: { isOpen: boolean, onC
   const [isCheckingPhone, setIsCheckingPhone] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
   const [services, setServices] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<any[]>([]);
@@ -449,14 +458,17 @@ export default function BookingModal({ isOpen, onClose }: { isOpen: boolean, onC
                   <button 
                     type="submit" 
                     disabled={isSubmitting || !formData.time || !formData.date}
-                    className="flex-1 bg-gold py-4 font-bold text-charcoal hover:bg-white transition-all gold-shadow flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className={`flex-1 py-4 font-bold transition-all flex items-center justify-center gap-2 
+                      ${isSubmitting || !formData.time || !formData.date 
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-50' 
+                        : 'bg-gold text-charcoal hover:bg-white gold-shadow'}`}
                   >
                     {isSubmitting ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Reservando...
+                        <span>PROCESSANDO...</span>
                       </>
-                    ) : 'Confirmar'}
+                    ) : 'CONFIRMAR AGENDAMENTO'}
                   </button>
                 </div>
               </motion.form>
