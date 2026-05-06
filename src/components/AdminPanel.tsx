@@ -22,8 +22,12 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     instagram: "barberpro_oficial",
     hoursWeekdays: "09:00 - 20:00",
     hoursSaturday: "08:00 - 18:00",
-    hoursSunday: "Fechado"
+    hoursSunday: "Fechado",
+    secondaryPassword: ""
   });
+  
+  const [isSecondaryVerified, setIsSecondaryVerified] = useState(false);
+  const [secondaryInput, setSecondaryInput] = useState("");
   
   const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'products' | 'cash' | 'customers' | 'settings' | 'pos' | 'fiados'>('appointments');
   const [showMenu, setShowMenu] = useState(true);
@@ -93,6 +97,13 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsSecondaryVerified(false);
+      setSecondaryInput("");
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isAdminLoggedIn && isOpen) {
@@ -501,7 +512,8 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       instagram: data.get('instagram') as string,
       hoursWeekdays: data.get('hoursWeekdays') as string,
       hoursSaturday: data.get('hoursSaturday') as string,
-      hoursSunday: data.get('hoursSunday') as string
+      hoursSunday: data.get('hoursSunday') as string,
+      secondaryPassword: data.get('secondaryPassword') as string
     };
 
     try {
@@ -610,6 +622,75 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
           
           <button onClick={onClose} className="w-full text-gray-600 text-[10px] uppercase tracking-widest mt-12 hover:text-white transition-colors">
             &larr; Voltar para o Site
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Segunda Senha de Proteção (Lock Screen)
+  if (isAdminLoggedIn && siteSettings.secondaryPassword && !isSecondaryVerified) {
+    return (
+      <div className="fixed inset-0 z-[700] bg-charcoal/98 backdrop-blur-2xl flex items-center justify-center p-6 text-white text-center">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-sm"
+        >
+          <div className="w-20 h-20 bg-gold/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-gold/20">
+            <Lock className="w-10 h-10 text-gold" />
+          </div>
+          <h2 className="font-display text-3xl font-bold uppercase tracking-widest mb-2 italic">Acesso Restrito</h2>
+          <p className="text-gray-500 text-sm mb-10 tracking-widest uppercase">Digite a senha de proteção para entrar</p>
+          
+          <div className="flex justify-center gap-4 mb-10">
+            {[0, 1, 2, 3].map((i) => (
+              <div 
+                key={i} 
+                className={`w-4 h-4 rounded-full border-2 transition-all ${secondaryInput.length > i ? 'bg-gold border-gold scale-125' : 'border-white/10'}`}
+              ></div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 max-w-[280px] mx-auto">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map((inputKey) => (
+              <button
+                key={inputKey}
+                onClick={() => {
+                  if (inputKey === 'C') {
+                    setSecondaryInput("");
+                  } else if (inputKey === 'OK') {
+                    if (secondaryInput === siteSettings.secondaryPassword) {
+                      setIsSecondaryVerified(true);
+                      setAlertMsg({ type: 'success', text: 'Acesso Protegido Liberado!' });
+                    } else {
+                      setSecondaryInput("");
+                      setAlertMsg({ type: 'error', text: 'Senha Incorreta!' });
+                    }
+                  } else if (secondaryInput.length < 8) {
+                    const newValue = secondaryInput + inputKey;
+                    setSecondaryInput(newValue);
+                    if (newValue === siteSettings.secondaryPassword) {
+                      setIsSecondaryVerified(true);
+                      setAlertMsg({ type: 'success', text: 'Acesso Protegido Liberado!' });
+                    }
+                  }
+                }}
+                className={`h-16 flex items-center justify-center rounded-xl text-xl font-bold transition-all ${
+                  inputKey === 'OK' ? 'bg-gold text-charcoal' : 
+                  inputKey === 'C' ? 'bg-red-500/10 text-red-500' : 'bg-white/5 hover:bg-white/10'
+                }`}
+              >
+                {inputKey}
+              </button>
+            ))}
+          </div>
+
+          <button 
+            onClick={onClose} 
+            className="mt-12 text-gray-600 hover:text-white text-[10px] uppercase tracking-[0.2em] transition-all"
+          >
+            &larr; Voltar ao Início
           </button>
         </motion.div>
       </div>
@@ -1799,6 +1880,23 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                         </div>
                       </div>
                     </div>
+
+                  <div className="space-y-4 pt-6 border-t border-white/10">
+                    <h3 className="text-xl font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                       <Lock className="w-5 h-5" /> Proteção Adicional
+                    </h3>
+                    <div className="space-y-2">
+                       <label className="text-[10px] uppercase tracking-widest text-gray-500">Segunda Senha de Acesso</label>
+                       <input 
+                         name="secondaryPassword" 
+                         type="password"
+                         defaultValue={siteSettings.secondaryPassword} 
+                         className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
+                         placeholder="Defina uma senha numérica ou texto"
+                       />
+                       <p className="text-[9px] text-gray-600 italic">Esta senha será solicitada TODA VEZ que você tentar entrar no painel, mesmo já logado.</p>
+                    </div>
+                  </div>
 
                   <div className="space-y-4 pt-6 border-t border-white/10">
                     <h3 className="text-xl font-bold text-gold uppercase tracking-widest flex items-center gap-2">
