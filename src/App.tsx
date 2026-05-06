@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Services from './components/Services';
@@ -10,6 +11,39 @@ import AdminPanel from './components/AdminPanel';
 export default function App() {
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [satisfiedCount, setSatisfiedCount] = useState(500);
+
+  const yearsOfExperience = new Date().getFullYear() - 2025;
+
+  useEffect(() => {
+    async function fetchSatisfiedCount() {
+      try {
+        const { count, error } = await supabase
+          .from('cash_book')
+          .select('*', { count: 'exact', head: true });
+        
+        if (!error && count !== null) {
+          setSatisfiedCount(500 + count);
+        }
+      } catch (err) {
+        console.error("Error fetching satisfied count:", err);
+      }
+    }
+
+    fetchSatisfiedCount();
+
+    // Opcional: Escutar mudanças no table para atualizar em tempo real
+    const channel = supabase
+      .channel('cash_book_changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cash_book' }, () => {
+        fetchSatisfiedCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-charcoal selection:bg-gold selection:text-charcoal relative">
@@ -34,18 +68,18 @@ export default function App() {
           <div>
             <h2 className="font-display text-4xl md:text-5xl font-bold text-white mb-6">A Arte da Excelência</h2>
             <p className="text-gray-400 text-lg leading-relaxed mb-8">
-              Fundada em 2015, a Barber Pro nasceu do desejo de resgatar a tradição das barbearias clássicas, unindo técnica artesanal ao que há de mais moderno em produtos e estilo.
+              Fundada em 2025, a Barber Pro nasceu do desejo de resgatar a tradição das barbearias clássicas, unindo técnica artesanal ao que há de mais moderno em produtos e estilo.
             </p>
             <p className="text-gray-400 text-lg leading-relaxed mb-10">
               Nossa equipe é formada por mestres barbeiros apaixonados pelo que fazem. Aqui, você não apenas corta o cabelo; você relaxa, toma uma boa cerveja e sai renovado.
             </p>
             <div className="grid grid-cols-2 gap-8">
               <div>
-                <div className="text-3xl font-bold text-gold font-display mb-1">10+</div>
-                <div className="text-sm text-gray-500 uppercase tracking-widest">Anos de Experiência</div>
+                <div className="text-3xl font-bold text-gold font-display mb-1">{yearsOfExperience}+</div>
+                <div className="text-sm text-gray-500 uppercase tracking-widest">{yearsOfExperience === 1 ? 'Ano' : 'Anos'} de Experiência</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-gold font-display mb-1">5k+</div>
+                <div className="text-3xl font-bold text-gold font-display mb-1">{satisfiedCount}+</div>
                 <div className="text-sm text-gray-500 uppercase tracking-widest">Clientes Satisfeitos</div>
               </div>
             </div>

@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogIn, LogOut, Check, X, Phone, Calendar as CalendarIcon, Clock, Trash2, ShoppingBag, LayoutDashboard, Scissors, Package, BookOpen, User as UserIcon, Lock, DollarSign, Wallet, Settings as SettingsIcon, ShoppingCart, CreditCard, Plus, Minus, Search, Loader2, Copy, RefreshCw, Edit } from 'lucide-react';
+import { LogIn, LogOut, Check, X, Phone, Calendar as CalendarIcon, Clock, Trash2, ShoppingBag, LayoutDashboard, Scissors, Package, BookOpen, User as UserIcon, Lock, DollarSign, Wallet, Settings as SettingsIcon, ShoppingCart, CreditCard, Plus, Minus, Search, Loader2, Copy, RefreshCw, Edit, Handshake, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeCanvas } from 'qrcode.react';
 
 export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminConfig, setAdminConfig] = useState<any>(null);
-  const [adminExists, setAdminExists] = useState<boolean | null>(null);
   
   const [appointments, setAppointments] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
@@ -16,16 +15,25 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
   const [customers, setCustomers] = useState<any[]>([]);
   const [siteSettings, setSiteSettings] = useState<any>({
     heroTitle: "Onde a barba para, o estilo começa.",
-    heroSubtitle: "Tradição & Estilo"
+    heroSubtitle: "Tradição & Estilo",
+    address: "Av. Central, 1234 - Centro, São Paulo, SP",
+    phone: "(11) 98765-4321",
+    email: "contato@barberpro.com",
+    instagram: "barberpro_oficial",
+    hoursWeekdays: "09:00 - 20:00",
+    hoursSaturday: "08:00 - 18:00",
+    hoursSunday: "Fechado"
   });
   
-  const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'products' | 'cash' | 'customers' | 'settings' | 'pos'>('appointments');
+  const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'products' | 'cash' | 'customers' | 'settings' | 'pos' | 'fiados'>('appointments');
+  const [showMenu, setShowMenu] = useState(true);
+  const [pendingFiadoId, setPendingFiadoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadTimeout, setLoadTimeout] = useState(false);
   
   // PDV States
   const [posCart, setPosCart] = useState<any[]>([]);
-  const [posPaymentMethod, setPosPaymentMethod] = useState<'dinheiro' | 'cartão' | 'pix'>('dinheiro');
+  const [posPaymentMethod, setPosPaymentMethod] = useState<'dinheiro' | 'cartão' | 'pix' | 'fiado'>('dinheiro');
   const [posAmountReceived, setPosAmountReceived] = useState<string>('');
   const [posCustomerPhone, setPosCustomerPhone] = useState<string>('');
   const [posCustomerName, setPosCustomerName] = useState<string>('');
@@ -50,8 +58,8 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     }
   }, [alertMsg]);
 
-  const [loginUser, setLoginUser] = useState("eletricistaarthur@gmail.com");
-  const [loginPass, setLoginPass] = useState("210779");
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPass, setLoginPass] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -77,7 +85,6 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       }
     });
 
-    setAdminExists(true);
     setLoading(false);
     clearTimeout(timer);
 
@@ -166,31 +173,6 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       let errorMsg = err.message;
       if (errorMsg === "Invalid login credentials") errorMsg = "E-mail ou senha incorretos.";
       setAlertMsg({ type: 'error', text: errorMsg });
-    } finally {
-      setIsProcessing(null);
-    }
-  };
-
-  const createFirstAdmin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsProcessing("register");
-    const data = new FormData(e.target as HTMLFormElement);
-    const username = (data.get('username') as string).trim();
-    const password = (data.get('password') as string).trim();
-
-    try {
-      if (password.length < 4) throw new Error("A senha deve ter pelo menos 4 caracteres.");
-      
-      const { error } = await supabase.from('settings').upsert([{ key: 'admin', value: { username, password } }]);
-      if (error) throw error;
-      
-      setAdminConfig({ username, password });
-      setAdminExists(true);
-      sessionStorage.setItem('barber_admin_session', 'active');
-      setIsAdminLoggedIn(true);
-      setAlertMsg({ type: 'success', text: "Acesso criado com sucesso!" });
-    } catch (err: any) {
-      setAlertMsg({ type: 'error', text: `Erro ao criar: ${err.message}` });
     } finally {
       setIsProcessing(null);
     }
@@ -347,7 +329,11 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
       let result = await performSave({ ...productData, ...stockData });
       
       // Se falhar porque as colunas de estoque não existem, tenta salvar apenas com os dados básicos
-      if (result.error && (result.error.message.includes("column \"stock_quantity\" does not exist") || result.error.message.includes("column \"min_quantity\" does not exist"))) {
+      if (result.error && (
+        result.error.message.includes("column \"stock_quantity\" does not exist") || 
+        result.error.message.includes("column \"min_quantity\" does not exist") ||
+        result.error.message.includes("schema cache")
+      )) {
         console.warn("Colunas de estoque não encontradas no banco, salvando apenas dados básicos.");
         result = await performSave(productData);
       }
@@ -407,9 +393,24 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
         service: servicesInCart || 'Venda Avulsa',
         products: productsInCart,
         amount: total,
-        details: `Venda via PDV (PIX - QR Code)`
+        details: `Venda via PDV (PIX - QR Code)${pendingFiadoId ? ' - LIQUIDAÇÃO DE FIADO' : ''}`
       }]);
       if (error) throw error;
+
+      if (pendingFiadoId) {
+        await supabase.from('cash_book')
+          .update({ details: `Dívida Liquidada em ${new Date().toLocaleDateString()} via PDV PIX` })
+          .eq('id', pendingFiadoId);
+        
+        // Atualiza o estado local para remover da lista de pendentes e atualizar totais
+        setCashEntries(prev => prev.map(entry => 
+          entry.id === pendingFiadoId 
+            ? { ...entry, details: `Dívida Liquidada em ${new Date().toLocaleDateString()} via PDV PIX` } 
+            : entry
+        ));
+        
+        setPendingFiadoId(null);
+      }
 
       if (posCustomerPhone && posCustomerName) {
         const { data: customer } = await supabase.from('customers').select('*').eq('phone', posCustomerPhone).maybeSingle();
@@ -493,7 +494,14 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
     const newSettings = {
       heroTitle: data.get('heroTitle') as string,
       heroSubtitle: data.get('heroSubtitle') as string,
-      pixKey: data.get('pixKey') as string
+      pixKey: data.get('pixKey') as string,
+      address: data.get('address') as string,
+      phone: data.get('phone') as string,
+      email: data.get('email') as string,
+      instagram: data.get('instagram') as string,
+      hoursWeekdays: data.get('hoursWeekdays') as string,
+      hoursSaturday: data.get('hoursSaturday') as string,
+      hoursSunday: data.get('hoursSunday') as string
     };
 
     try {
@@ -516,7 +524,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
 
   if (!isOpen) return null;
 
-  if (loading || adminExists === null) {
+  if (loading) {
     return (
       <div className="fixed inset-0 z-[600] bg-charcoal flex flex-col items-center justify-center p-6 text-center">
         <div className="text-gold animate-pulse font-display text-xl uppercase tracking-widest mb-4">Carregando Painel...</div>
@@ -525,7 +533,6 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
              <button 
               onClick={() => {
                 setLoading(false);
-                setAdminExists(true);
               }}
               className="px-4 py-2 bg-gold/10 text-gold border border-gold/30 text-[10px] uppercase tracking-widest font-bold rounded-lg hover:bg-gold hover:text-charcoal transition-all"
              >
@@ -554,79 +561,50 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
           <div className="text-center mb-8">
             <h2 className="font-display text-3xl font-bold text-white mb-2">Painel do Barbeiro</h2>
             <p className="text-gray-500 text-sm">
-              {adminExists === false ? 'Bem-vindo! Configure seu primeiro acesso' : 'Identifique-se para gerenciar sua barbearia'}
+              Identifique-se para gerenciar sua barbearia
             </p>
           </div>
 
-          {adminExists === false ? (
-            <form onSubmit={createFirstAdmin} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-gray-500 block">Escolha um Usuário</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold" />
-                  <input name="username" placeholder="Nome de usuário" required className="w-full bg-charcoal border border-white/5 pl-10 pr-4 py-4 text-white outline-none focus:border-gold transition-all" />
+          <div className="space-y-6">
+            <form onSubmit={handleCustomLogin} className="space-y-4">
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest text-gray-500 block ml-1">E-mail de Acesso</label>
+                  <input 
+                    name="email" 
+                    type="email"
+                    value={loginUser}
+                    onChange={(e) => setLoginUser(e.target.value)}
+                    placeholder="email@exemplo.com" 
+                    required 
+                    className="w-full bg-charcoal border border-white/10 px-4 py-4 text-white outline-none focus:border-gold transition-all text-sm" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest text-gray-500 block ml-1">Senha Secreta</label>
+                  <input 
+                    name="password" 
+                    type="password" 
+                    value={loginPass}
+                    onChange={(e) => setLoginPass(e.target.value)}
+                    placeholder="******" 
+                    required 
+                    className="w-full bg-charcoal border border-white/10 px-4 py-4 text-white outline-none focus:border-gold transition-all text-sm" 
+                  />
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-gray-500 block">Crie uma Senha</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold" />
-                  <input name="password" type="password" placeholder="Sua senha" required className="w-full bg-charcoal border border-white/5 pl-10 pr-4 py-4 text-white outline-none focus:border-gold transition-all" />
-                </div>
-              </div>
-              <button 
-                type="submit" 
-                disabled={isProcessing === "register"}
-                className="w-full bg-gold text-charcoal font-bold py-5 hover:bg-white transition-all mt-4 uppercase tracking-widest text-sm gold-shadow flex items-center justify-center gap-2"
-              >
-                {isProcessing === "register" ? "Criando..." : "Criar Acesso e Entrar"}
-              </button>
-            </form>
-          ) : (
-            <div className="space-y-6">
-              <form onSubmit={handleCustomLogin} className="space-y-4">
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500 block ml-1">Usuário de Acesso</label>
-                    <input 
-                      name="username" 
-                      value={loginUser}
-                      onChange={(e) => setLoginUser(e.target.value)}
-                      placeholder="eletricistaarthur@gmail.com" 
-                      required 
-                      className="w-full bg-charcoal border border-white/10 px-4 py-4 text-white outline-none focus:border-gold transition-all text-sm" 
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500 block ml-1">Senha Secreta</label>
-                    <input 
-                      name="password" 
-                      type="password" 
-                      value={loginPass}
-                      onChange={(e) => setLoginPass(e.target.value)}
-                      placeholder="******" 
-                      required 
-                      className="w-full bg-charcoal border border-white/10 px-4 py-4 text-white outline-none focus:border-gold transition-all text-sm" 
-                    />
-                  </div>
-                </div>
 
-                <div className="pt-2">
-                  <button 
-                    type="submit" 
-                    disabled={isProcessing === "login"}
-                    className="w-full bg-gold text-charcoal font-black py-5 hover:bg-white transition-all uppercase tracking-[0.2em] text-xs gold-shadow flex items-center justify-center gap-2"
-                  >
-                    {isProcessing === "login" ? "Autenticando..." : "Entrar no Painel"}
-                  </button>
-                  
-                  <p className="text-[9px] text-gray-600 text-center mt-6 leading-relaxed">
-                    Seus dados já estão preenchidos acima.<br />Basta clicar em <b>Entrar no Painel</b> para acessar.
-                  </p>
-                </div>
-              </form>
-            </div>
-          )}
+              <div className="pt-2">
+                <button 
+                  type="submit" 
+                  disabled={isProcessing === "login"}
+                  className="w-full bg-gold text-charcoal font-black py-5 hover:bg-white transition-all uppercase tracking-[0.2em] text-xs gold-shadow flex items-center justify-center gap-2"
+                >
+                  {isProcessing === "login" ? "Autenticando..." : "Entrar no Painel"}
+                </button>
+              </div>
+            </form>
+          </div>
           
           <button onClick={onClose} className="w-full text-gray-600 text-[10px] uppercase tracking-widest mt-12 hover:text-white transition-colors">
             &larr; Voltar para o Site
@@ -637,7 +615,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
   }
 
   return (
-    <div className="fixed inset-0 z-[400] bg-charcoal flex flex-col md:flex-row shadow-2xl overflow-hidden text-white">
+    <div className="fixed inset-0 z-[400] bg-charcoal flex flex-col shadow-2xl overflow-hidden text-white">
       {/* Aviso de Configuração Faltante na Vercel */}
       {!import.meta.env.VITE_SUPABASE_URL && (
         <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[10px] font-bold uppercase tracking-[0.2em] py-3 px-4 z-[1000] text-center shadow-2xl flex items-center justify-center gap-3">
@@ -696,93 +674,148 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
         )}
       </AnimatePresence>
 
-      {/* MENU LATERAL (DESKTOP) / MENU INFERIOR (MOBILE) */}
-      <aside className={`w-full md:w-64 bg-[#1a1a1a] border-b md:border-b-0 md:border-r border-white/5 flex flex-col order-2 md:order-1 ${activeTab === 'pos' ? 'hidden md:flex' : 'flex'}`}>
-        <div className="flex md:hidden h-16 bg-[#1a1a1a] items-center justify-between px-6 border-b border-white/5 order-first">
-          <div className="flex items-center gap-2">
-             <Scissors className="text-gold w-5 h-5 rotate-45" />
-             <span className="font-display text-lg font-bold text-white tracking-widest uppercase italic italic">ADMIN<span className="text-gold">PRO</span></span>
-          </div>
-          <button onClick={onClose} className="text-gray-500"><X className="w-6 h-6" /></button>
+      {/* HEADER / MENU SUPERIOR */}
+      <header className={`w-full bg-[#1a1a1a] border-b border-white/5 flex flex-col z-[450] ${activeTab === 'pos' ? 'hidden md:flex' : 'flex'}`}>
+        <div className="flex h-16 md:h-20 bg-[#1a1a1a] items-center justify-between px-6 border-b border-white/5">
+          {!showMenu ? (
+            <div className="flex w-full items-center justify-between">
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setShowMenu(true)}
+                  className="p-2 bg-gold/10 rounded-lg border border-gold/20 text-gold hover:bg-gold/20 transition-all"
+                >
+                  <Scissors className="w-5 h-5 rotate-45" />
+                </button>
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-gold font-bold">Visualizando</span>
+                  <h2 className="font-display text-lg font-bold text-white uppercase tracking-widest italic">
+                    {activeTab === 'appointments' ? 'Agenda' : 
+                     activeTab === 'services' ? 'Serviços' :
+                     activeTab === 'products' ? 'Vendas' :
+                     activeTab === 'cash' ? 'Caixa' :
+                     activeTab === 'fiados' ? 'Fiados' :
+                     activeTab === 'customers' ? 'Clientes' :
+                     activeTab === 'settings' ? 'Ajustes' : 'Painel'}
+                  </h2>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowMenu(true)} 
+                className="text-gray-400 hover:text-white p-2 bg-white/5 rounded-lg border border-white/5 flex items-center gap-2 transition-all hover:border-white/20"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-widest hidden md:block">Menu</span>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setShowMenu(false)}
+                  className="p-2 rounded-lg bg-gold text-charcoal transition-all shadow-lg shadow-gold/20"
+                  title="Fechar Menu"
+                >
+                  <Scissors className="w-5 h-5" />
+                </button>
+                <div className="flex flex-col">
+                  <h2 className="font-display text-xl md:text-2xl font-bold text-white leading-tight">Barber <span className="text-gold">Pro</span></h2>
+                  <p className="text-[9px] uppercase tracking-[0.2em] text-gray-500">Admin Dashboard</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-4">
+                 {/* Sair Desk */}
+                 <button onClick={logout} className="hidden md:flex items-center gap-2 px-4 py-2 text-gray-500 hover:text-red-400 transition-all text-xs font-bold uppercase tracking-widest bg-white/5 rounded-lg border border-white/5">
+                    <LogOut className="w-3 h-3" /> Sair
+                 </button>
+                 <button onClick={onClose} className="text-gray-600 hover:text-white p-2 bg-white/5 rounded-lg border border-white/5 transition-all hover:border-white/20"><X className="w-5 h-5" /></button>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="hidden md:flex p-8 border-b border-white/5 items-center justify-between">
-          <div>
-            <h2 className="font-display text-2xl font-bold text-white leading-tight">Barber <span className="text-gold">Pro</span></h2>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mt-1">Admin Dashboard</p>
-          </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-white"><X className="w-5 h-5" /></button>
-        </div>
+        <AnimatePresence>
+          {showMenu && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-[#121212] border-b border-white/5 overflow-hidden"
+            >
+              <nav className="flex flex-wrap md:flex-row items-center justify-center gap-2 p-4 md:p-6 no-scrollbar">
+                <button 
+                  onClick={() => { setActiveTab('pos'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'pos' ? 'text-gold md:bg-gold md:text-charcoal font-bold md:rounded-lg' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">PDV / Vendas</span>
+                </button>
 
-        <nav className="flex md:flex-col overflow-x-auto md:overflow-x-visible md:flex-grow md:p-6 no-scrollbar">
-          <button 
-            onClick={() => setActiveTab('pos')}
-            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'pos' ? 'text-gold md:bg-gold md:text-charcoal font-bold md:rounded-lg' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
-          >
-            <ShoppingCart className="w-5 h-5" />
-            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">PDV / Vendas</span>
-          </button>
+                <button 
+                  onClick={() => { setActiveTab('appointments'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all group ${activeTab === 'appointments' ? 'text-gold md:bg-gold md:text-charcoal font-bold md:rounded-lg' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Agenda</span>
+                  {appointments.length > 0 && activeTab !== 'appointments' && (
+                    <span className="hidden md:block ml-auto bg-gold text-charcoal text-[10px] px-2 py-0.5 rounded-full font-bold">
+                      {appointments.length}
+                    </span>
+                  )}
+                </button>
+                
+                <button 
+                  onClick={() => { setActiveTab('services'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'services' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <Scissors className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Serviços</span>
+                </button>
 
-          <button 
-            onClick={() => setActiveTab('appointments')}
-            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all group ${activeTab === 'appointments' ? 'text-gold md:bg-gold md:text-charcoal font-bold md:rounded-lg' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Agenda</span>
-            {appointments.length > 0 && activeTab !== 'appointments' && (
-              <span className="hidden md:block ml-auto bg-gold text-charcoal text-[10px] px-2 py-0.5 rounded-full font-bold">
-                {appointments.length}
-              </span>
-            )}
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('services')}
-            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'services' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
-          >
-            <Scissors className="w-5 h-5" />
-            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Serviços</span>
-          </button>
+                <button 
+                  onClick={() => { setActiveTab('products'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'products' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <Package className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Vendas</span>
+                </button>
 
-          <button 
-            onClick={() => setActiveTab('products')}
-            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'products' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
-          >
-            <Package className="w-5 h-5" />
-            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Vendas</span>
-          </button>
+                <button 
+                  onClick={() => { setActiveTab('cash'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'cash' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <BookOpen className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Caixa</span>
+                </button>
 
-          <button 
-            onClick={() => setActiveTab('cash')}
-            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'cash' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
-          >
-            <BookOpen className="w-5 h-5" />
-            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Caixa</span>
-          </button>
+                <button 
+                  onClick={() => { setActiveTab('fiados'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'fiados' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <Handshake className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Fiados</span>
+                </button>
 
-          <button 
-            onClick={() => setActiveTab('customers')}
-            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'customers' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
-          >
-            <UserIcon className="w-5 h-5" />
-            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Clientes</span>
-          </button>
+                <button 
+                  onClick={() => { setActiveTab('customers'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'customers' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <UserIcon className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal">Clientes</span>
+                </button>
 
-          <button 
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'settings' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
-          >
-            <SettingsIcon className="w-5 h-5" />
-            <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal text-nowrap">Configurações</span>
-          </button>
-        </nav>
-
-        <div className="hidden md:block p-6 border-t border-white/5 space-y-4">
-          <button onClick={logout} className="w-full flex items-center gap-4 px-4 py-3 text-gray-500 hover:text-red-400 transition-all text-sm">
-            <LogOut className="w-4 h-4" /> Sair do Painel
-          </button>
-        </div>
-      </aside>
+                <button 
+                  onClick={() => { setActiveTab('settings'); setShowMenu(false); }}
+                  className={`flex-1 md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-4 py-3 md:py-4 transition-all ${activeTab === 'settings' ? 'text-gold md:bg-gold/10 md:text-gold font-bold md:border md:border-gold/20' : 'text-gray-500 hover:text-white md:hover:bg-white/5'}`}
+                >
+                  <SettingsIcon className="w-5 h-5" />
+                  <span className="text-[10px] md:text-sm font-bold md:font-semibold uppercase md:capitalize tracking-widest md:tracking-normal text-nowrap">Configurações</span>
+                </button>
+              </nav>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
 
       {activeTab === 'pos' && (
         <motion.div 
@@ -973,7 +1006,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <button 
                     onClick={() => setPosPaymentMethod('dinheiro')}
                     className={`py-4 rounded-xl flex flex-col items-center gap-1 border transition-all ${posPaymentMethod === 'dinheiro' ? 'bg-gold border-gold text-charcoal' : 'bg-charcoal border-white/5 text-gray-500 hover:text-white'}`}
@@ -994,6 +1027,15 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                   >
                     <Check className="w-4 h-4" />
                     <span className="text-[10px] font-black uppercase">PIX</span>
+                  </button>
+                  <button 
+                    onClick={() => setPosPaymentMethod('fiado')}
+                    disabled={!!pendingFiadoId}
+                    className={`py-4 rounded-xl flex flex-col items-center gap-1 border transition-all ${posPaymentMethod === 'fiado' ? 'bg-gold border-gold text-charcoal' : 'bg-charcoal border-white/5 text-gray-500 hover:text-white'} ${pendingFiadoId ? 'opacity-20 cursor-not-allowed' : ''}`}
+                  >
+                    <Handshake className="w-4 h-4" />
+                    <span className="text-[10px] font-black uppercase">Fiado</span>
+                    {pendingFiadoId && <span className="text-[8px] text-red-500 absolute -top-2 bg-charcoal px-1">Indisponível</span>}
                   </button>
                 </div>
 
@@ -1075,9 +1117,24 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                         service: servicesInCart || 'Venda Avulsa',
                         products: productsInCart,
                         amount: total,
-                        details: `Venda via PDV (${posPaymentMethod.toUpperCase()})`
+                        details: `Venda via PDV (${posPaymentMethod.toUpperCase()})${pendingFiadoId ? ' - LIQUIDAÇÃO DE FIADO' : ''}`
                       }]);
                       if (error) throw error;
+
+                      if (pendingFiadoId) {
+                        await supabase.from('cash_book')
+                          .update({ details: `Dívida Liquidada em ${new Date().toLocaleDateString()} via PDV ${posPaymentMethod.toUpperCase()}` })
+                          .eq('id', pendingFiadoId);
+
+                        // Atualiza o estado local para remover da lista de pendentes e atualizar totais
+                        setCashEntries(prev => prev.map(entry => 
+                          entry.id === pendingFiadoId 
+                            ? { ...entry, details: `Dívida Liquidada em ${new Date().toLocaleDateString()} via PDV ${posPaymentMethod.toUpperCase()}` } 
+                            : entry
+                        ));
+
+                        setPendingFiadoId(null);
+                      }
 
                       if (posCustomerPhone && posCustomerName) {
                         const { data: customer } = await supabase.from('customers').select('*').eq('phone', posCustomerPhone).maybeSingle();
@@ -1126,12 +1183,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
 
       {/* ÁREA PRINCIPAL CONTENT */}
       {activeTab !== 'pos' && (
-        <main className="flex-grow overflow-y-auto bg-charcoal p-4 md:p-12 order-1 md:order-2">
-        {/* HEADER MOBILE */}
-        <div className="md:hidden flex justify-between items-center mb-6 pt-2">
-          <h2 className="font-display text-xl font-bold text-white">Barber <span className="text-gold">Pro</span></h2>
-          <button onClick={onClose} className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Fechar</button>
-        </div>
+        <main className="flex-grow overflow-y-auto bg-charcoal p-4 md:p-12">
 
         <AnimatePresence mode="wait">
           {activeTab === 'appointments' && (
@@ -1208,12 +1260,143 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
             </motion.div>
           )}
 
-          {activeTab === 'cash' && (
+          {activeTab === 'fiados' && (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
               <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 md:mb-12 gap-4">
                 <div>
+                  <h1 className="font-display text-3xl md:text-5xl font-bold text-white mb-1 md:mb-2 italic">Controle de Fiados</h1>
+                  <p className="text-gray-500 text-xs md:text-sm">Clientes que possuem pendências de pagamento</p>
+                </div>
+                <div className="w-full md:w-auto bg-red-500/10 p-5 border border-red-500/20 rounded-xl">
+                  <p className="text-[10px] uppercase tracking-widest text-red-500 mb-1 font-bold">Total a Receber</p>
+                  <p className="font-display text-2xl md:text-3xl font-bold text-white leading-none">
+                    R$ {cashEntries.filter(e => e.details?.toLowerCase().includes('fiado') && !e.details?.toLowerCase().includes('liquidada')).reduce((sum, entry) => sum + (entry.amount || 0), 0).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {cashEntries.filter(e => e.details?.toLowerCase().includes('fiado') && !e.details?.toLowerCase().includes('liquidada')).map((entry) => (
+                  <div key={entry.id} className="bg-clay border border-red-500/10 p-5 md:p-6 rounded-2xl hover:border-red-500/30 transition-all shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-black uppercase px-2 py-1 rotate-45 translate-x-3 -translate-y-1">PENDENTE</div>
+                    <div className="flex justify-between items-start mb-4 pb-4 border-b border-white/5">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1 font-bold">
+                          {entry.date ? new Date(entry.date).toLocaleDateString() : 'Recente'}
+                        </div>
+                        <div className="text-xl font-bold text-white uppercase tracking-tight">{entry.client_name}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] uppercase tracking-widest text-red-500 mb-0.5">Dívida</div>
+                        <div className="text-2xl font-display font-bold text-white leading-tight">R$ {entry.amount?.toFixed(2)}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-gray-400">
+                         <span className="text-gold text-[10px] uppercase font-bold block">Serviço</span>
+                         {entry.service}
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setPosCart([{
+                            id: 'fiado-payment',
+                            cartId: 'fiado-' + entry.id,
+                            name: `Pagamento: ${entry.service}`,
+                            price: `R$ ${entry.amount.toFixed(2)}`,
+                            quantity: 1,
+                            type: 'service'
+                          }]);
+                          setPosCustomerName(entry.client_name);
+                          setPendingFiadoId(entry.id);
+                          setPosMobileStep('checkout'); // Go directly to checkout
+                          setActiveTab('pos');
+                          setAlertMsg({ type: 'info', text: `Recebendo fiado de ${entry.client_name}` });
+                        }}
+                        className="bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-white border border-green-500/20 px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all"
+                      >
+                        Receber Fiado (PDV)
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {cashEntries.filter(e => e.details?.toLowerCase().includes('fiado')).length === 0 && (
+                   <div className="text-center py-20 text-gray-700 italic border border-dashed border-white/5 rounded-2xl">
+                     Nenhum fiado pendente. Tudo em dia!
+                   </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'cash' && (
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 md:mb-12 gap-4">
+                <div className="flex-grow">
                   <h1 className="font-display text-3xl md:text-5xl font-bold text-white mb-1 md:mb-2 italic">Livro Caixa</h1>
                   <p className="text-gray-500 text-xs md:text-sm">Histórico detalhado de faturamento</p>
+                  
+                  <div className="flex gap-2 mt-4">
+                    <button 
+                      onClick={() => {
+                        const total = cashEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+                        const byMethod = {
+                          dinheiro: cashEntries.filter(e => e.details?.toLowerCase().includes('dinheiro')).reduce((s, e) => s + e.amount, 0),
+                          cartao: cashEntries.filter(e => e.details?.toLowerCase().includes('cartão')).reduce((s, e) => s + e.amount, 0),
+                          pix: cashEntries.filter(e => e.details?.toLowerCase().includes('pix')).reduce((s, e) => s + e.amount, 0),
+                          fiado: cashEntries.filter(e => e.details?.toLowerCase().includes('fiado')).reduce((s, e) => s + e.amount, 0),
+                        };
+
+                        const report = `RELATÓRIO DE CAIXA COMPLETO\n` +
+                                     `Data de Emissão: ${new Date().toLocaleString()}\n` +
+                                     `==================================\n\n` +
+                                     `RESUMO POR PAGAMENTO:\n` +
+                                     `----------------------------------\n` +
+                                     `Dinheiro: R$ ${byMethod.dinheiro.toFixed(2)}\n` +
+                                     `Cartão:   R$ ${byMethod.cartao.toFixed(2)}\n` +
+                                     `PIX:      R$ ${byMethod.pix.toFixed(2)}\n` +
+                                     `FIADO:    R$ ${byMethod.fiado.toFixed(2)}\n` +
+                                     `----------------------------------\n` +
+                                     `TOTAL:    R$ ${total.toFixed(2)}\n\n` +
+                                     `DETALHAMENTO:\n` +
+                                     `----------------------------------\n` +
+                                     cashEntries.map(e => `${new Date(e.date).toLocaleDateString()} | ${e.client_name.padEnd(20)} | R$ ${e.amount.toFixed(2).padStart(8)} | ${e.service}`).join('\n') +
+                                     `\n==================================\n` +
+                                     `Fim do Relatório.`;
+                        
+                        const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `relatorio_caixa_${new Date().toISOString().split('T')[0]}.txt`;
+                        a.click();
+                        setAlertMsg({ type: 'success', text: "Relatório detalhado gerado com sucesso!" });
+                      }}
+                      className="bg-white/5 border border-white/10 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-white/10 transition-all rounded"
+                    >
+                      Gerar Relatório
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (confirm("Deseja realmente LIMPAR TODO o livro caixa? Esta ação não pode ser desfeita.")) {
+                          setIsProcessing('clear_cash');
+                          try {
+                            const { error } = await supabase.from('cash_book').delete().neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all filter
+                            if (error) throw error;
+                            setCashEntries([]);
+                            setAlertMsg({ type: 'success', text: "Livro caixa limpo com sucesso!" });
+                          } catch (err: any) {
+                            setAlertMsg({ type: 'error', text: "Erro ao limpar caixa: " + err.message });
+                          } finally {
+                            setIsProcessing(null);
+                          }
+                        }
+                      }}
+                      className="bg-red-500/10 border border-red-500/20 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-500/20 transition-all rounded"
+                    >
+                      {isProcessing === 'clear_cash' ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Limpar Tudo'}
+                    </button>
+                  </div>
                 </div>
                 <div className="w-full md:w-auto bg-gold/10 p-5 border border-gold/20 rounded-xl">
                   <p className="text-[10px] uppercase tracking-widest text-gold mb-1 font-bold">Total Acumulado</p>
@@ -1404,7 +1587,7 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                            </>
                          ) : (editingProduct ? 'Atualizar' : 'Salvar')}
                        </button>
-                       {editingProduct && <button type="button" onClick={() => setEditingProduct(null)} className="px-6 border border-white/10 text-white hover:bg-white/5 uppercase text-xs">Cancelar</button>}
+                       {editingProduct && <button type="button" onClick={() => { setEditingProduct(null); setProductImage(''); }} className="px-6 border border-white/10 text-white hover:bg-white/5 uppercase text-xs">Cancelar</button>}
                      </div>
                   </form>
                   <div className="space-y-4">
@@ -1529,6 +1712,92 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
                     </div>
                   </div>
 
+                    <div className="space-y-4 pt-6 border-t border-white/10">
+                      <h3 className="text-xl font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                         <MapPin className="w-5 h-5" /> Contato e Endereço
+                      </h3>
+                      
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase tracking-widest text-gray-500">Endereço Completo</label>
+                        <textarea 
+                          name="address" 
+                          defaultValue={siteSettings.address} 
+                          className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none h-24" 
+                          placeholder="Ex: Av. Central, 1234 - Centro&#10;São Paulo, SP"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-gray-500">Telefone / WhatsApp</label>
+                          <input 
+                            name="phone" 
+                            defaultValue={siteSettings.phone} 
+                            className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
+                            placeholder="(00) 00000-0000"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-gray-500">E-mail</label>
+                          <input 
+                            name="email" 
+                            type="email"
+                            defaultValue={siteSettings.email} 
+                            className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
+                            placeholder="contato@barbearia.com"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-gray-500">Instagram (apenas o @user)</label>
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gold font-bold">@</span>
+                            <input 
+                              name="instagram" 
+                              defaultValue={siteSettings.instagram} 
+                              className="w-full bg-charcoal border border-white/5 p-4 pl-8 text-white focus:border-gold outline-none" 
+                              placeholder="sua_barbearia"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 pt-6 border-t border-white/10">
+                      <h3 className="text-xl font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                         <Clock className="w-5 h-5" /> Horário de Funcionamento
+                      </h3>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-gray-500">Seg - Sex</label>
+                          <input 
+                            name="hoursWeekdays" 
+                            defaultValue={siteSettings.hoursWeekdays} 
+                            className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
+                            placeholder="09:00 - 20:00"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-gray-500">Sábado</label>
+                          <input 
+                            name="hoursSaturday" 
+                            defaultValue={siteSettings.hoursSaturday} 
+                            className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
+                            placeholder="09:00 - 18:00"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-gray-500">Domingo</label>
+                          <input 
+                            name="hoursSunday" 
+                            defaultValue={siteSettings.hoursSunday} 
+                            className="w-full bg-charcoal border border-white/5 p-4 text-white focus:border-gold outline-none" 
+                            placeholder="Fechado"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                   <div className="space-y-4 pt-6 border-t border-white/10">
                     <h3 className="text-xl font-bold text-gold uppercase tracking-widest flex items-center gap-2">
                        <DollarSign className="w-5 h-5" /> Pagamentos
@@ -1566,67 +1835,6 @@ export default function AdminPanel({ isOpen, onClose }: { isOpen: boolean, onClo
 
         </AnimatePresence>
       </main>
-      )}
-
-      {/* Menu Inferior Mobile (Sempre visível se logado, exceto no PDV para liberar espaço) */}
-      {isAdminLoggedIn && activeTab !== 'pos' && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-clay border-t border-white/5 z-50 shrink-0 overflow-x-auto no-scrollbar">
-          <div className="flex h-20 items-stretch min-w-max">
-            <button 
-              onClick={() => setActiveTab('pos')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'pos' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
-            >
-              <ShoppingCart className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight">PDV</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('appointments')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'appointments' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
-            >
-              <CalendarIcon className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight">Agenda</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('services')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'services' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
-            >
-              <Scissors className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight">Serviços</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('products')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'products' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
-            >
-              <Package className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight">Vendas</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('cash')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'cash' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
-            >
-              <DollarSign className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight">Caixa</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('customers')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'customers' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
-            >
-              <UserIcon className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight">Clientes</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('settings')}
-              className={`flex-1 flex flex-col items-center justify-center gap-1.5 transition-all ${activeTab === 'settings' ? 'bg-gold/5 text-gold border-t-2 border-gold shadow-[0_-10px_20px_-10px_rgba(212,175,55,0.2)]' : 'text-gray-600'}`}
-            >
-              <SettingsIcon className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight">Ajustes</span>
-            </button>
-            <button onClick={logout} className="flex-1 flex flex-col items-center justify-center gap-1.5 text-gray-600 hover:text-red-500 border-l border-white/5">
-              <LogOut className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-tight text-red-500/80">Sair</span>
-            </button>
-          </div>
-        </nav>
       )}
     </div>
   );
